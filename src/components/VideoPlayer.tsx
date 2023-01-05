@@ -34,21 +34,23 @@ const VideoPlayer = () => {
   const [duration, setDuration] = useState<number>(0);
   const [volume, setVolume] = useState<number | string>(0);
 
-  // console.log(isPlaying);
+  const [isVisible, setIsVisible] = useState(false);
 
   const togglePlay = () => {
-    if (isPlaying) {
-      videoRef.current?.pause();
-      setIsPlaying(false);
-    } else {
-      videoRef.current?.play();
-      setIsPlaying(true);
+    if (videoRef.current) {
+      if (videoRef.current.paused) {
+        videoRef.current.play();
+        setIsPlaying(true);
+      } else {
+        videoRef.current.pause();
+        setIsPlaying(false);
+      }
     }
   };
 
   const forwardVideo = () => {
     if (videoRef.current) {
-      videoRef.current.currentTime += 15;
+      setCurrentTime((videoRef.current.currentTime += 15));
     }
   };
 
@@ -77,8 +79,11 @@ const VideoPlayer = () => {
   };
 
   const handleQualityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // videoRef.current.pause();
+    setCurrentTime(videoRef.current.currentTime);
+
     setQuailty(e.target.value);
-    setIsPlaying(true);
+    // videoRef.current.currentTime = currentTime;
   };
 
   const handleTimeUpdate = () => {
@@ -92,7 +97,7 @@ const VideoPlayer = () => {
     }
   };
 
-  const handleChangeRange = (e: any) => {
+  const handleChangeRange = () => {
     if (videoRef.current) {
       videoRef.current.currentTime = progressBarRef.current.value;
     }
@@ -103,6 +108,8 @@ const VideoPlayer = () => {
       videoRef.current.volume = event.target.value;
     }
 
+    // change event.target.value with mouse wheel
+
     if (event.target.value === '0') {
       setIsMuted(true);
     } else {
@@ -111,14 +118,12 @@ const VideoPlayer = () => {
   };
 
   const handleMute = () => {
-    setIsMuted(prev => !prev);
+    if (!videoRef.current?.muted) {
+      volumeRef.current.value = '0';
+    }
 
-    if (isMuted) {
-      setVolume((volumeRef.current.value = 0.2));
-      videoRef.current.muted = false;
-    } else {
-      setVolume((volumeRef.current.value = 0));
-      videoRef.current.muted = true;
+    if (videoRef.current?.volume === 0) {
+      volumeRef.current.value = '0.2';
     }
   };
 
@@ -135,39 +140,84 @@ const VideoPlayer = () => {
   };
 
   const handleKeyPress = (event: KeyboardEvent) => {
-    if (event.key === ' ' || (event.key === 'Space' && videoRef.current)) {
-      console.log('space is pressed');
+    if (event.key === ' ') {
       togglePlay();
     }
 
-    if (event.key === 'ArrowRight') {
-      forwardVideo();
+    if (event.keyCode === 39) {
+      // Right arrow key
+      if (videoRef.current) {
+        videoRef.current.currentTime += 15; // Forward video by 15 seconds
+      }
+    } else if (event.keyCode === 37) {
+      // Left arrow key
+      if (videoRef.current) {
+        videoRef.current.currentTime -= 15; // Backward video by 15 seconds
+      }
+    } else if (event.keyCode === 77) {
+      // "m" key
+      if (videoRef.current) {
+        handleMute();
+      }
     }
+  };
 
-    if (event.key === 'ArrowLeft') {
-      console.log('left arrow is pressed');
-      backwardVideo();
-    }
-
-    if (event.key === 'm' && videoRef.current) {
-      handleMute();
+  // change volume with mouse wheel
+  const handleWheel = (event: WheelEvent) => {
+    event.preventDefault();
+    if (event.deltaY > 0) {
+      if (volumeRef.current?.value > 0) {
+        volumeRef.current.value -= 0.1;
+        setVolume(parseFloat(volumeRef.current.value));
+      }
+    } else {
+      if (volumeRef.current?.value < 1) {
+        volumeRef.current.value = Number(volumeRef.current?.value) + 0.1;
+        setVolume(parseFloat(volumeRef.current.value));
+      }
     }
   };
 
   useEffect(() => {
+    volumeRef.current.addEventListener('wheel', handleWheel);
     document.addEventListener('keydown', handleKeyPress);
-
-    return () => {
-      document.removeEventListener('keydown', handleKeyPress);
-    };
-  }, [videoRef.current?.currentTime, isPlaying]);
+  }, []);
 
   useEffect(() => {
     //1 second interval
     setInterval(() => {
       handleTimeUpdate();
     }, 1000);
-  }, [videoRef.current?.currentTime]);
+  }, []);
+
+  useEffect(() => {
+    videoRef.current.currentTime = currentTime - 1;
+  }, [quailty]);
+
+  useEffect(() => {
+    let timeoutId: number;
+
+    const handleMouseMove = () => {
+      setIsVisible(true);
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => setIsVisible(false), 3000);
+    };
+    const handleMouseLeave = () => {
+      setIsVisible(false);
+      clearTimeout(timeoutId);
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    if (videoRef.current) {
+      videoRef.current.addEventListener('mouseleave', handleMouseLeave);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      if (videoRef.current) {
+        videoRef.current.removeEventListener('mouseleave', handleMouseLeave);
+      }
+      clearTimeout(timeoutId);
+    };
+  }, []);
 
   return (
     <Container>
@@ -181,7 +231,8 @@ const VideoPlayer = () => {
         autoPlay
       />
 
-      <ProgressWrapper>
+      {}
+      <ProgressWrapper style={{ opacity: isVisible ? '1' : '0' }}>
         <CurrentTime>{formatTime(currentTime)}</CurrentTime>
 
         <ProgressBar
@@ -196,20 +247,20 @@ const VideoPlayer = () => {
         <Duration>{formatDuration(remainingTime)}</Duration>
       </ProgressWrapper>
 
-      <VolumeControls>
+      <VolumeControls style={{ opacity: isVisible ? '1' : '0' }}>
         <VolumeInput
           type='range'
           ref={volumeRef}
           defaultValue='0'
-          min='0'
-          step='0.1'
-          max='1'
+          min={0}
+          step={0.1}
+          max={1}
           onChange={handleVolumeChange}
         />
         <VolumeLogo>{changeVolumeIcon()}</VolumeLogo>
       </VolumeControls>
 
-      <Controls>
+      <Controls style={{ opacity: isVisible ? '1' : '0' }}>
         <EditButton>
           <EditIcon />
         </EditButton>
@@ -228,7 +279,7 @@ const VideoPlayer = () => {
           {isSettingsOpen && (
             <QualityOptions>
               <input
-                type='checkbox'
+                type='radio'
                 name='quality'
                 value='720p'
                 onChange={handleQualityChange}
@@ -237,7 +288,7 @@ const VideoPlayer = () => {
               <label>720p</label>
 
               <input
-                type='checkbox'
+                type='radio'
                 name='quality'
                 value='1080p'
                 onChange={handleQualityChange}
@@ -299,6 +350,8 @@ const Controls = styled.div`
       font-size: 20px;
     }
   }
+
+  transition: all 0.2s ease-in-out;
 `;
 
 const PlayPause = styled.div`
@@ -310,8 +363,6 @@ const PlayPause = styled.div`
   width: 73px;
   height: 73px;
   cursor: pointer;
-
-  transition: all 0.3s ease-in-out;
 
   @media (max-width: 425px) {
     width: 50px;
@@ -468,6 +519,8 @@ const VolumeControls = styled.div`
     height: 321px;
     border-radius: 12px;
   }
+
+  transition: all 0.2s ease-in-out;
 `;
 
 const VolumeInput = styled.input`
@@ -519,6 +572,8 @@ const ProgressWrapper = styled.div`
     width: 80%;
     left: 45%;
   }
+
+  transition: all 0.2s ease-in-out;
 `;
 const ProgressBar = styled.input<ProgressBarProps>`
   width: 100%;
@@ -552,6 +607,8 @@ const ProgressBar = styled.input<ProgressBarProps>`
     cursor: pointer;
     filter: blur(2px);
   }
+
+  transition: all 0.2s ease-in-out;
 `;
 
 const CurrentTime = styled.p`
